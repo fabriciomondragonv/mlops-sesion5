@@ -33,7 +33,7 @@ class TrainEvaluateModels:
         self._create_output_path_train()
 
     def train_evaluate_models(self, df_data_train, model_parameters_grid):
-        rf = RandomForestClassifier()
+        rf = RandomForestClassifier(random_state=42, class_weight="balanced")
         x_cols = self._get_preprocess_x_columns()
         y_col = self._get_preprocess_y_column()
         grid_search = GridSearchCV(estimator=rf, param_grid=model_parameters_grid, scoring='roc_auc')
