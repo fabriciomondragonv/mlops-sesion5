@@ -66,7 +66,7 @@ def process_train_evaluate_models(model_parameters_grid):
 
 def main():
     #model_parameters_grid =  {'n_estimators':[50,100,500], 'max_depth':[2,4,6,8], 'min_samples_leaf':[50,100,250,500], 'min_impurity_decrease':[0, 0.001, 0.005]}
-    model_parameters_grid = {'n_estimators': [50, 100], 'max_depth': [4, 6],
+    model_parameters_grid = {'n_estimators': [50], 'max_depth': [6],
                              'min_samples_leaf': [100], 'min_impurity_decrease': [0]}
     process_train_evaluate_models(model_parameters_grid)
 
