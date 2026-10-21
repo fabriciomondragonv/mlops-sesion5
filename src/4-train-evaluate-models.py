@@ -33,7 +33,7 @@ class TrainEvaluateModels:
         self._create_output_path_train()
 
     def train_evaluate_models(self, df_data_train, model_parameters_grid):
-        rf = RandomForestClassifier()
+        rf = RandomForestClassifier(random_state=42, class_weight="balanced")
         x_cols = self._get_preprocess_x_columns()
         y_col = self._get_preprocess_y_column()
         grid_search = GridSearchCV(estimator=rf, param_grid=model_parameters_grid, scoring='roc_auc')
@@ -66,7 +66,7 @@ def process_train_evaluate_models(model_parameters_grid):
 
 def main():
     #model_parameters_grid =  {'n_estimators':[50,100,500], 'max_depth':[2,4,6,8], 'min_samples_leaf':[50,100,250,500], 'min_impurity_decrease':[0, 0.001, 0.005]}
-    model_parameters_grid = {'n_estimators': [50, 100], 'max_depth': [4, 6],
+    model_parameters_grid = {'n_estimators': [50], 'max_depth': [6],
                              'min_samples_leaf': [100], 'min_impurity_decrease': [0]}
     process_train_evaluate_models(model_parameters_grid)
 

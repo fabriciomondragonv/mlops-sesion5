@@ -1,0 +1,111 @@
+name: Model CI/CD
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - 'run_pipeline.py'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.12'
+
+permissions:
+  contents: read
+
+jobs:
+  model-ci:
+    runs-on: ubuntu-latest
+    outputs:
+      auc-test: ${{ steps.metricas.outputs.auc-test }}
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v6
+      - name: Instalar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Descargar datos
+        run: python src/0-download-data.py
+      - name: Separar train y test
+        run: python src/1-split-dataset.py
+      - name: Preprocesar train
+        run: python src/2-preprocess-dataset-train.py
+      - name: Preparar test
+        run: python src/3-prepare-dataset-test.py
+      - name: Entrenar y evaluar modelos
+        run: python src/4-train-evaluate-models.py
+      - name: Seleccionar mejor modelo
+        run: python src/5-select-best-model.py
+      - name: Publicar métricas
+        id: metricas
+        run: |
+          AUC=$(python -c "import pandas as pd; m=pd.read_csv('outputs/train/metrics/train_test_metrics.csv'); print(round(m.loc[m['sample']=='test','auc'].iloc[0], 4))")
+          echo "AUC test: $AUC"
+          echo "auc-test=$AUC" >> "$GITHUB_OUTPUT"
+      - name: Guardar el modelo como artefacto
+        uses: actions/upload-artifact@v7
+        with:
+          name: modelo-riesgo
+          if-no-files-found: error
+          path: |
+            outputs/preprocess/
+            outputs/train/metrics/
+            outputs/train/feature_importance.csv
+            outputs/train/models/best_model.pickle
+      - name: Quality gate (AUC mínimo)
+        env:
+          AUC_TEST: ${{ steps.metricas.outputs.auc-test }}
+          AUC_MIN: ${{ vars.AUC_MIN || '0.70' }}
+        run: |
+          echo "AUC test = $AUC_TEST | Umbral mínimo = $AUC_MIN"
+          python -c "import os, sys; auc=float(os.environ['AUC_TEST']); minimo=float(os.environ['AUC_MIN']); sys.exit(0 if auc >= minimo else 'El AUC está por debajo del umbral: el modelo NO pasa')"
+          echo "El modelo supera el umbral"
+
+  model-cd:
+    needs: model-ci
+    if: github.event_name != 'pull_request' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment: produccion
+    steps:
+      - name: Descargar el modelo
+        uses: actions/download-artifact@v8
+        with:
+          name: modelo-riesgo
+      - name: Ver lo que llegó
+        run: ls -R
+      - name: Conectar a la base de datos
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          test -n "$DB_USER" && test -n "$DB_PASSWORD"
+          echo "Credenciales de producción disponibles. Conexión simulada."
+      - name: Desplegar modelo
+        env:
+          AUC_TEST: ${{ needs.model-ci.outputs.auc-test }}
+        run: echo "Desplegando modelo con AUC test = $AUC_TEST (simulado)"
+
+  reporte-error:
+    needs: [model-ci, model-cd]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar qué pasó
+        env:
+          AUTOR: ${{ github.actor }}
+          COMMIT: ${{ github.sha }}
+          AUC_TEST: ${{ needs.model-ci.outputs.auc-test }}
+        run: |
+          echo "El robot guardián detuvo el pipeline"
+          echo "Autor: @$AUTOR | Commit: $COMMIT"
+          echo "AUC test: $AUC_TEST"
